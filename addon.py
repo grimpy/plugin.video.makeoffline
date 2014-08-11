@@ -50,10 +50,10 @@ if 'movies' in lastContentType:
     newpath = os.path.join(basepath, "Movies", title)
 else:
     series = xbmc.getInfoLabel("ListItem.TVShowTitle")
-    season = "%02d" % int(xbmc.getInfoLabel("ListItem.Season"))
-    episode = "%02d" % int(xbmc.getInfoLabel("ListItem.Episode"))
-    newpath = os.path.join(basepath, "Series", season, )
-    title = "%s-%s" % (episode, title)
+    season = "S%02d" % int(xbmc.getInfoLabel("ListItem.Season"))
+    episode = "E%02d" % int(xbmc.getInfoLabel("ListItem.Episode"))
+    newpath = os.path.join(basepath, "Series", series, season, )
+    title = "%s%s-%s" % (season, episode, title)
 
 if not os.path.exists(newpath):
     os.makedirs(newpath)
