@@ -1,5 +1,4 @@
 #!/usr/bin/python
-
 import xbmc
 import xbmcaddon
 import xbmcgui
@@ -7,19 +6,90 @@ import sys
 import os
 import xbmcvfs
 import json
+import urlparse
 
 pluginhandle=int(sys.argv[1])
+args = sys.argv[2]
+print args
+if len(args) > 1:
+    params = urlparse.parse_qs(args[1:])
+else:
+    params = dict()
+
 addon = xbmcaddon.Addon("plugin.video.makeoffline")
 storelocation = "storelocation"
 basepath = addon.getSetting(storelocation)
 
 lastContentType = xbmc.getInfoLabel('Container.FolderPath')
-path = xbmc.getInfoLabel('ListItem.FileNameAndPath')
-title = xbmc.getInfoLabel('ListItem.Title')
+
+dialog = xbmcgui.Dialog()
 
 def makeRequest(call, **kwargs):
     request = {"jsonrpc": "2.0", "method": call, "id": 1, "params": kwargs}
     return json.loads(xbmc.executeJSONRPC(json.dumps(request)))
+
+def download(newpath, title, path, confirm=True):
+    global dialog
+    if os.path.exists(path):
+        dialog.notification("Local file", "Nothing to do")
+        return
+    if not os.path.exists(newpath):
+        os.makedirs(newpath)
+    newpath = os.path.join(newpath, "%s.mkv" % title)
+
+    vfsfile = xbmcvfs.File(path)
+    size = vfsfile.size()
+
+    progress = xbmcgui.DialogProgress()
+    progress.create('Download', title)
+    datalen = 0
+    chunksize = 1024*1024
+
+    if os.path.exists(newpath):
+        stat = os.stat(newpath)
+        if size != stat.st_size:
+            os.path.remove(newpath)
+        else:
+            dialog.notification("Download", "Previously downloaded %s" % title)
+            return
+
+    if confirm:
+        answer = dialog.yesno("Download?", "Are you sure you want to download %s to" % title, newpath)
+    else:
+        answer = True
+    if not answer:
+        dialog = xbmcgui.Dialog()
+        dialog.notification("Download", "Cancelled %s" % title)
+        return
+
+    with open(newpath, "w") as fd:
+        data = vfsfile.read(chunksize)
+        while data and not progress.iscanceled():
+            datalen += chunksize
+            percent = int((float(datalen) / size) * 100)
+            progress.update(percent, '')
+            fd.write(data)
+            data = vfsfile.read(1024*1024)
+
+    if progress.iscanceled():
+        os.remove(newpath)
+    else:
+        makeRequest('VideoLibrary.Scan')
+
+def downloadItem(x, downloadlist):
+    title = xbmc.getInfoLabel("Container().ListItem(%s).Title" % x)
+    if title:
+        path = xbmc.getInfoLabel("Container().ListItem(%s).FileNameAndPath" % x)
+        if 'movies' in lastContentType:
+            newpath = os.path.join(basepath, "Movies", title)
+        else:
+            series = xbmc.getInfoLabel("Container().ListItem(%s).TVShowTitle" % x)
+            season = "S%02d" % int(xbmc.getInfoLabel("Container().ListItem(%s).Season" % x))
+            episode = "E%02d" % int(xbmc.getInfoLabel("Container().ListItem(%s).Episode" % x))
+            newpath = os.path.join(basepath, "Series", series, season, )
+            title = "%s%s-%s" % (season, episode, title)
+        download(newpath, title, path, not downloadlist)
+
 
 if not basepath:
     options = list()
@@ -29,60 +99,22 @@ if not basepath:
             options.append(source['file'])
     if options:
         options.append("Enter Manually")
-        dialog = xbmcgui.Dialog()
         result = dialog.select("Choose Location", options)
         if result < len(options) - 1:
             basepath = options[result]
     if not basepath:
-        dialog = xbmcgui.Dialog()
         basepath = dialog.browseSingle(3, "Select download folder", "videos")
-    dialog = xbmcgui.Dialog()
     answer = dialog.yesno("Always use this path?", basepath)
     if answer:
         addon.setSetting(storelocation, basepath)
 
-if os.path.exists(path):
-    dialog = xbmcgui.Dialog()
-    dialog.notification("Local file", "Nothing to do")
-    sys.exit(0)
-
-if 'movies' in lastContentType:
-    newpath = os.path.join(basepath, "Movies", title)
+items = int(xbmc.getInfoLabel("Container().NumItems"))
+folder = xbmc.getInfoLabel("Container.Foldername")
+downloadlist = 'list' in params
+if downloadlist:
+    answer = dialog.yesno("Download entire folder %s with %s items" % (folder, items), "")
+    if answer:
+        for x in xrange(0, items + 1): # hack to jump over ..
+            downloadItem(x, downloadlist)
 else:
-    series = xbmc.getInfoLabel("ListItem.TVShowTitle")
-    season = "S%02d" % int(xbmc.getInfoLabel("ListItem.Season"))
-    episode = "E%02d" % int(xbmc.getInfoLabel("ListItem.Episode"))
-    newpath = os.path.join(basepath, "Series", series, season, )
-    title = "%s%s-%s" % (season, episode, title)
-
-if not os.path.exists(newpath):
-    os.makedirs(newpath)
-newpath = os.path.join(newpath, "%s.mkv" % title)
-
-dialog = xbmcgui.Dialog()
-answer = dialog.yesno("Download?", "Are you sure you want to download %s to" % title, newpath)
-if not answer:
-    dialog = xbmcgui.Dialog()
-    dialog.notification("Download", "Cancelled %s" % title)
-    sys.exit(0)
-
-progress = xbmcgui.DialogProgress()
-progress.create('Download', title)
-datalen = 0
-chunksize = 1024*1024
-with open(newpath, "w") as fd:
-    #urlopen = urllib2.urlopen(urlpath)
-    vfsfile = xbmcvfs.File(path)
-    size = vfsfile.size()
-    data = vfsfile.read(chunksize)
-    while data and not progress.iscanceled():
-        datalen += chunksize
-        percent = int((float(datalen) / size) * 100)
-        progress.update(percent, '')
-        fd.write(data)
-        data = vfsfile.read(1024*1024)
-
-if progress.iscanceled():
-    os.remove(newpath)
-else:
-    makeRequest('VideoLibrary.Scan')
+    downloadItem(0, False)
