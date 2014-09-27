@@ -40,41 +40,44 @@ def download(newpath, title, path, confirm=True):
     vfsfile = xbmcvfs.File(path)
     size = vfsfile.size()
 
-    progress = xbmcgui.DialogProgress()
-    progress.create('Download', title)
-    datalen = 0
-    chunksize = 1024*1024
+    progress = xbmcgui.DialogProgressBG()
+    try:
+        progress.create('Download', title)
+        datalen = 0
+        chunksize = 1024*1024
 
-    if os.path.exists(newpath):
-        stat = os.stat(newpath)
-        if size != stat.st_size:
-            os.path.remove(newpath)
+        if os.path.exists(newpath):
+            stat = os.stat(newpath)
+            if size != stat.st_size:
+                os.unlink(newpath)
+            else:
+                dialog.notification("Download", "Previously downloaded %s" % title)
+                return
+
+        if confirm:
+            answer = dialog.yesno("Download?", "Are you sure you want to download %s to" % title, newpath)
         else:
-            dialog.notification("Download", "Previously downloaded %s" % title)
+            answer = True
+        if not answer:
+            dialog = xbmcgui.Dialog()
+            dialog.notification("Download", "Cancelled %s" % title)
             return
 
-    if confirm:
-        answer = dialog.yesno("Download?", "Are you sure you want to download %s to" % title, newpath)
-    else:
-        answer = True
-    if not answer:
-        dialog = xbmcgui.Dialog()
-        dialog.notification("Download", "Cancelled %s" % title)
-        return
+        with open(newpath, "w") as fd:
+            data = vfsfile.read(chunksize)
+            while data: # and not progress.iscanceled():
+                datalen += chunksize
+                percent = int((float(datalen) / size) * 100)
+                progress.update(percent, '')
+                fd.write(data)
+                data = vfsfile.read(1024*1024)
 
-    with open(newpath, "w") as fd:
-        data = vfsfile.read(chunksize)
-        while data and not progress.iscanceled():
-            datalen += chunksize
-            percent = int((float(datalen) / size) * 100)
-            progress.update(percent, '')
-            fd.write(data)
-            data = vfsfile.read(1024*1024)
-
-    if progress.iscanceled():
-        os.remove(newpath)
-    else:
-        makeRequest('VideoLibrary.Scan')
+        # if progress.iscanceled():
+        #     os.remove(newpath)
+        # else:
+    finally:
+        progress.close()
+    makeRequest('VideoLibrary.Scan')
 
 def downloadItem(x, downloadlist):
     title = xbmc.getInfoLabel("Container().ListItem(%s).Title" % x)
