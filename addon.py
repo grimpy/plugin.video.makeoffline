@@ -77,7 +77,6 @@ def download(newpath, title, path, confirm=True):
         # else:
     finally:
         progress.close()
-    makeRequest('VideoLibrary.Scan')
 
 def downloadItem(x, downloadlist):
     title = xbmc.getInfoLabel("Container().ListItem(%s).Title" % x)
@@ -91,7 +90,7 @@ def downloadItem(x, downloadlist):
             episode = "E%02d" % int(xbmc.getInfoLabel("Container().ListItem(%s).Episode" % x))
             newpath = os.path.join(basepath, "Series", series, season, )
             title = "%s%s-%s" % (season, episode, title)
-        download(newpath, title, path, not downloadlist)
+        return newpath, title, path, not downloadlist
 
 
 if not basepath:
@@ -111,13 +110,19 @@ if not basepath:
     if answer:
         addon.setSetting(storelocation, basepath)
 
-items = int(xbmc.getInfoLabel("Container().NumItems"))
+nritems = int(xbmc.getInfoLabel("Container().NumItems"))
 folder = xbmc.getInfoLabel("Container.Foldername")
 downloadlist = 'list' in params
 if downloadlist:
-    answer = dialog.yesno("Download entire folder %s with %s items" % (folder, items), "")
+    items = list()
+    answer = dialog.yesno("Download entire folder %s with %s items" % (folder, nritems), "")
     if answer:
-        for x in xrange(0, items + 1): # hack to jump over ..
-            downloadItem(x, downloadlist)
+        for x in xrange(0, nritems + 1): # hack to jump over ..
+            items.append(downloadItem(x, downloadlist))
+        for item in items:
+            if item:
+                download(*item)
 else:
     downloadItem(0, False)
+
+makeRequest('VideoLibrary.Scan')
