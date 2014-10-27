@@ -78,7 +78,7 @@ def download(newpath, title, path, confirm=True):
     finally:
         progress.close()
 
-def downloadItem(x, downloadlist):
+def getInfo(x, downloadlist):
     title = xbmc.getInfoLabel("Container().ListItem(%s).Title" % x)
     if title:
         path = xbmc.getInfoLabel("Container().ListItem(%s).FileNameAndPath" % x)
@@ -118,11 +118,11 @@ if downloadlist:
     answer = dialog.yesno("Download entire folder %s with %s items" % (folder, nritems), "")
     if answer:
         for x in xrange(0, nritems + 1): # hack to jump over ..
-            items.append(downloadItem(x, downloadlist))
+            items.append(getInfo(x, downloadlist))
         for item in items:
             if item:
                 download(*item)
 else:
-    downloadItem(0, False)
+    download(*getInfo(0, False))
 
 makeRequest('VideoLibrary.Scan')
